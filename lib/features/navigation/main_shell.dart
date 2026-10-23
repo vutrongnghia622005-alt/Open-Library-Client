@@ -54,19 +54,23 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  bool get _isBackend =>
+      widget.authService.apiClient != null &&
+      !(widget.authService.currentUser?.id.startsWith('demo-') ?? true);
+
   late final _service =
       widget.service ??
-      (widget.authService.apiClient == null
+      (!_isBackend
           ? OpenLibraryService()
           : BackendBookService(widget.authService.apiClient!));
-  late final _catalog = widget.authService.apiClient == null
+  late final _catalog = !_isBackend
       ? null
       : BackendCatalogService(widget.authService.apiClient!);
   late final _rankings = widget.rankingService ?? BookRankingService();
   late final _shelf =
       widget.bookshelfService ??
       widget.bookshelfFactory?.call(widget.authService.currentUser!.id) ??
-      (widget.authService.apiClient == null
+      (!_isBackend
           ? BookshelfService(userId: widget.authService.currentUser!.id)
           : BackendBookshelfService(
               userId: widget.authService.currentUser!.id,

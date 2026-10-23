@@ -144,8 +144,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ],
             ),
-            if (widget.authService.apiClient == null) ...[
-              const SizedBox(height: 10),
+            const SizedBox(height: 10),
               TextButton.icon(
                 onPressed: _loading
                     ? null
@@ -167,7 +166,6 @@ class _LoginPageState extends State<LoginPage> {
                   fontSize: 12,
                 ),
               ),
-            ],
           ],
         ),
       ),

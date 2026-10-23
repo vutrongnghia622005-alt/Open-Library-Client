@@ -16,6 +16,10 @@ class EditionMetadata extends StatelessWidget {
       context.tr("Nhà xuất bản"): edition?.publishers.join(', '),
       context.tr("Ngày xuất bản"): edition?.publishDate,
       'ISBN': edition?.isbn.join(' · '),
+      if (edition?.format != null && edition!.format!.isNotEmpty)
+        context.tr("Định dạng"): edition!.format,
+      if (edition?.publishPlaces.isNotEmpty == true)
+        context.tr("Nơi xuất bản"): edition!.publishPlaces.join(', '),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1,4 +1,6 @@
+import 'sample_books.dart';
 import '../../../core/network/api_client.dart';
+import '../data/book_enrichment_data.dart';
 import '../models/book.dart';
 import 'open_library_service.dart';
 
@@ -68,7 +70,7 @@ class BackendBookService extends OpenLibraryService {
           result = result.withEdition(editions.editions.first);
         }
       }
-      return result;
+      return BookEnrichmentData.enrich(result);
     } on ApiException catch (error) {
       throw BookSearchException(error.message);
     } on FormatException {
@@ -117,14 +119,18 @@ class BackendCatalogService {
   final ApiClient api;
 
   Future<List<Book>> loadBooks() async {
-    final data = await api.request(
-      'GET',
-      '/books',
-      authenticated: false,
-      query: {'pageSize': '50'},
-    );
-    return (data['items'] as List)
-        .map((item) => Book.fromApiJson(Map<String, dynamic>.from(item as Map)))
-        .toList();
+    try {
+      final data = await api.request(
+        'GET',
+        '/books',
+        authenticated: false,
+        query: {'pageSize': '50'},
+      );
+      return (data['items'] as List)
+          .map((item) => Book.fromApiJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+    } catch (_) {
+      return SampleBooks.load();
+    }
   }
 }
