@@ -9,8 +9,7 @@ import 'edit_profile_page.dart';
 import 'settings_page.dart';
 import 'settings_service.dart';
 
-/// Minimal authenticated landing page for the person 5 integration.
-/// Resolved: this page now contains the account and settings destinations.
+/// Account landing page: identity, shelf shortcut, account and app settings.
 class ProfilePage extends StatelessWidget {
   const ProfilePage({
     super.key,
@@ -25,6 +24,11 @@ class ProfilePage extends StatelessWidget {
   void _open(BuildContext context, Widget page) =>
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
 
+  void _editProfile(BuildContext context) => _open(
+    context,
+    EditProfilePage(authService: authService, settings: settings),
+  );
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([authService, settings]),
@@ -34,7 +38,7 @@ class ProfilePage extends StatelessWidget {
       final english = settings.language == 'en';
       final scheme = Theme.of(context).colorScheme;
       final border = BorderSide(
-        color: scheme.outlineVariant.withValues(alpha: .55),
+        color: scheme.outlineVariant.withValues(alpha: .8),
       );
       return Scaffold(
         backgroundColor: scheme.surface,
@@ -43,7 +47,7 @@ class ProfilePage extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 125),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
                 children: [
                   Row(
                     children: [
@@ -66,116 +70,18 @@ class ProfilePage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      InkWell(
-                        borderRadius: BorderRadius.circular(34),
-                        onTap: () => _open(
-                          context,
-                          EditProfilePage(
-                            authService: authService,
-                            settings: settings,
-                          ),
-                        ),
-                        child: AvatarImage(
-                          radius: 34,
-                          bytes: settings.avatarBytes,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              user.email,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: AppTheme.muted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(
-                        width: 88,
-                        child: TextButton(
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: Size.zero,
-                          ),
-                          onPressed: () => _open(
-                            context,
-                            EditProfilePage(
-                              authService: authService,
-                              settings: settings,
-                            ),
-                          ),
-                          child: Text(
-                            english ? 'Edit' : 'Sửa hồ sơ',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 18),
-                  Material(
-                    color: const Color(0xFFFFF1E9),
-                    borderRadius: BorderRadius.circular(18),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      leading: const Icon(
-                        Icons.menu_book_outlined,
-                        color: AppTheme.accent,
-                      ),
-                      title: Text(
-                        english ? 'My bookshelf' : 'Tủ sách của tôi',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.ink,
-                        ),
-                      ),
-                      subtitle: Text(
-                        english
-                            ? 'Saved books and reading progress'
-                            : 'Sách đã lưu và tiến độ đọc',
-                        style: const TextStyle(color: AppTheme.muted),
-                      ),
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                        color: AppTheme.ink,
-                      ),
-                      onTap: onShelfTap,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
+                  _identity(context, user.displayName, user.email, english),
+                  const SizedBox(height: 20),
+                  _shelfCard(context, english),
+                  const SizedBox(height: 26),
                   _heading(english ? 'Account' : 'Tài khoản'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   _group(context, border, [
                     _tile(
                       Icons.person_outline,
                       english ? 'Personal information' : 'Thông tin cá nhân',
-                      () => _open(
-                        context,
-                        EditProfilePage(
-                          authService: authService,
-                          settings: settings,
-                        ),
-                      ),
+                      () => _editProfile(context),
                     ),
                     _tile(
                       Icons.lock_outline,
@@ -188,11 +94,15 @@ class ProfilePage extends StatelessWidget {
                   ]),
                   const SizedBox(height: 24),
                   _heading(english ? 'Settings' : 'Cài đặt'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   _group(context, border, [
                     ListTile(
-                      leading: const Icon(Icons.notifications_none),
-                      title: Text(english ? 'Notifications' : 'Thông báo'),
+                      leading: const Icon(Icons.notifications_none, size: 24),
+                      minLeadingWidth: 28,
+                      title: Text(
+                        english ? 'Notifications' : 'Thông báo',
+                        style: const TextStyle(fontSize: 15),
+                      ),
                       trailing: Switch(
                         value: settings.notifications,
                         onChanged: (value) async {
@@ -211,7 +121,9 @@ class ProfilePage extends StatelessWidget {
                       trailing: english ? 'English' : 'Tiếng Việt',
                     ),
                     _tile(
-                      Icons.light_mode_outlined,
+                      settings.darkMode
+                          ? Icons.dark_mode_outlined
+                          : Icons.light_mode_outlined,
                       english ? 'Appearance' : 'Giao diện',
                       () => _open(context, SettingsPage(settings: settings)),
                       trailing: settings.darkMode
@@ -219,7 +131,7 @@ class ProfilePage extends StatelessWidget {
                           : (english ? 'Light' : 'Sáng'),
                     ),
                   ]),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   _group(context, border, [
                     _tile(
                       Icons.help_outline,
@@ -235,17 +147,24 @@ class ProfilePage extends StatelessWidget {
                       () => _open(context, AboutPage(english: english)),
                     ),
                   ]),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 20),
                   OutlinedButton.icon(
                     onPressed: authService.signOut,
-                    icon: const Icon(Icons.logout),
+                    icon: const Icon(Icons.logout_rounded),
                     label: Text(english ? 'Sign out' : 'Đăng xuất'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.accent,
-                      side: const BorderSide(color: AppTheme.accent),
-                      minimumSize: const Size.fromHeight(48),
+                      side: const BorderSide(
+                        color: AppTheme.accent,
+                        width: 1.3,
+                      ),
+                      minimumSize: const Size.fromHeight(50),
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(11),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
@@ -258,6 +177,167 @@ class ProfilePage extends StatelessWidget {
     },
   );
 
+  static Color _tint(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF4B2B35)
+      : const Color(0xFFFFEEE9);
+
+  Widget _identity(
+    BuildContext context,
+    String name,
+    String email,
+    bool english,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final tint = _tint(context);
+    return Row(
+      children: [
+        InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => _editProfile(context),
+          child: SizedBox.square(
+            dimension: 76,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AvatarImage(radius: 38, bytes: settings.avatarBytes),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 15,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                email,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 96),
+          child: TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: tint,
+              foregroundColor: AppTheme.accent,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(0, 34),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => _editProfile(context),
+            child: Text(
+              english ? 'Edit' : 'Sửa hồ sơ',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _shelfCard(BuildContext context, bool english) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: dark ? const Color(0xFF3A2630) : const Color(0xFFFFF3EE),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onShelfTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(
+                  Icons.menu_book_outlined,
+                  color: AppTheme.accent,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      english ? 'My bookshelf' : 'Tủ sách của tôi',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      english
+                          ? 'Saved books and reading progress'
+                          : 'Sách đã lưu và tiến độ đọc',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: scheme.onSurface),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   static void _error(BuildContext context) => ScaffoldMessenger.of(context)
       .showSnackBar(
         const SnackBar(content: Text('Không lưu được cài đặt. Hãy thử lại.')),
@@ -266,7 +346,7 @@ class ProfilePage extends StatelessWidget {
   Widget _heading(String label) => Text(
     label,
     style: const TextStyle(
-      fontSize: 21,
+      fontSize: 19,
       fontWeight: FontWeight.w800,
       letterSpacing: -0.3,
     ),
@@ -280,13 +360,13 @@ class ProfilePage extends StatelessWidget {
     color: Theme.of(context).colorScheme.surface,
     shape: RoundedRectangleBorder(
       side: border,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
     ),
     clipBehavior: Clip.antiAlias,
     child: Column(
       children: [
         for (var i = 0; i < children.length; i++) ...[
-          if (i > 0) const Divider(height: 1, indent: 52),
+          if (i > 0) const Divider(height: 1, indent: 56),
           children[i],
         ],
       ],
@@ -299,14 +379,19 @@ class ProfilePage extends StatelessWidget {
     VoidCallback onTap, {
     String? trailing,
   }) => ListTile(
-    leading: Icon(icon),
-    title: Text(title),
+    leading: Icon(icon, size: 24),
+    minLeadingWidth: 28,
+    title: Text(title, style: const TextStyle(fontSize: 15)),
     trailing: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (trailing != null)
-          Text(trailing, style: const TextStyle(color: AppTheme.muted)),
-        const Icon(Icons.chevron_right),
+          Text(
+            trailing,
+            style: const TextStyle(fontSize: 14, color: AppTheme.muted),
+          ),
+        const SizedBox(width: 4),
+        const Icon(Icons.chevron_right, color: AppTheme.muted),
       ],
     ),
     onTap: onTap,

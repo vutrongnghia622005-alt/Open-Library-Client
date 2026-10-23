@@ -188,7 +188,7 @@ class _MainShellState extends State<MainShell> {
                       isScrollControlled: true,
                       useSafeArea: true,
                       showDragHandle: true,
-                      backgroundColor: Colors.white,
+                      backgroundColor: Theme.of(context).colorScheme.surface,
                       builder: (_) =>
                           ReadingProgressSheet(service: _shelf, saved: saved),
                     );
@@ -245,77 +245,139 @@ class _MainShellState extends State<MainShell> {
             ),
           ),
         ),
-        child: SafeArea(
-          top: false,
-          minimum: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-          child: DecoratedBox(
+        child: _BottomNav(
+          selectedIndex: _tab,
+          onSelected: _selectTab,
+          dark: dark,
+          items: [
+            _NavItem(
+              Icons.home_outlined,
+              Icons.home_rounded,
+              english ? 'Explore' : 'Khám phá',
+            ),
+            _NavItem(
+              Icons.search,
+              Icons.search,
+              english ? 'Search' : 'Tìm kiếm',
+            ),
+            _NavItem(
+              Icons.library_books_outlined,
+              Icons.library_books,
+              english ? 'Bookshelf' : 'Tủ sách',
+            ),
+            _NavItem(
+              Icons.person_outline,
+              Icons.person,
+              english ? 'Profile' : 'Cá nhân',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem {
+  const _NavItem(this.icon, this.selectedIcon, this.label);
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+}
+
+/// Flat bottom bar from the mockup: a soft tinted pill marks the active tab.
+class _BottomNav extends StatelessWidget {
+  const _BottomNav({
+    required this.items,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.dark,
+  });
+  final List<_NavItem> items;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final idle = dark ? Colors.white70 : const Color(0xFF686B74);
+    final indicator = dark ? const Color(0xFF4B2B35) : const Color(0xFFFFEEE9);
+    final animate = !MediaQuery.disableAnimationsOf(context);
+    return Material(
+      color: scheme.surface,
+      shape: Border(top: BorderSide(color: scheme.outlineVariant)),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 6),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++)
+                Expanded(
+                  child: _destination(
+                    items[i],
+                    selected: i == selectedIndex,
+                    onTap: () => onSelected(i),
+                    idle: idle,
+                    indicator: indicator,
+                    animate: animate,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _destination(
+    _NavItem item, {
+    required bool selected,
+    required VoidCallback onTap,
+    required Color idle,
+    required Color indicator,
+    required bool animate,
+  }) {
+    final color = selected ? AppTheme.accent : idle;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Center(
+          child: AnimatedContainer(
+            duration: animate
+                ? const Duration(milliseconds: 220)
+                : Duration.zero,
+            curve: Curves.easeOutCubic,
+            constraints: const BoxConstraints(minWidth: 64, minHeight: 52),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(26),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x14000000),
-                  blurRadius: 16,
-                  offset: Offset(0, 3),
+              color: selected ? indicator : indicator.withValues(alpha: 0),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  selected ? item.selectedIcon : item.icon,
+                  size: 25,
+                  color: color,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: color,
+                  ),
                 ),
               ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(26),
-              child: NavigationBarTheme(
-                data: NavigationBarThemeData(
-                  backgroundColor: Theme.of(context).colorScheme.surface,
-                  surfaceTintColor: Colors.transparent,
-                  indicatorColor: dark
-                      ? const Color(0xFF4B2B35)
-                      : const Color(0xFFFFEEE9),
-                  height: 72,
-                  elevation: 0,
-                  labelTextStyle: WidgetStateProperty.resolveWith(
-                    (states) => TextStyle(
-                      fontSize: 12,
-                      fontWeight: states.contains(WidgetState.selected)
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color: states.contains(WidgetState.selected)
-                          ? AppTheme.accent
-                          : (dark ? Colors.white70 : const Color(0xFF686B74)),
-                    ),
-                  ),
-                  iconTheme: WidgetStateProperty.resolveWith(
-                    (states) => IconThemeData(
-                      size: 27,
-                      color: states.contains(WidgetState.selected)
-                          ? AppTheme.accent
-                          : (dark ? Colors.white70 : const Color(0xFF686B74)),
-                    ),
-                  ),
-                ),
-                child: NavigationBar(
-                  selectedIndex: _tab,
-                  onDestinationSelected: _selectTab,
-                  destinations: [
-                    NavigationDestination(
-                      icon: Icon(Icons.home_outlined),
-                      selectedIcon: Icon(Icons.home),
-                      label: english ? 'Explore' : 'Khám phá',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.search),
-                      label: english ? 'Search' : 'Tìm kiếm',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.library_books_outlined),
-                      label: english ? 'Bookshelf' : 'Tủ sách',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.person_outline),
-                      selectedIcon: Icon(Icons.person),
-                      label: english ? 'Profile' : 'Cá nhân',
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ),
