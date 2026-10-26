@@ -5,10 +5,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/widgets/book_card.dart';
+import '../../core/widgets/book_cover.dart';
 import '../../core/widgets/error_view.dart';
 import '../../core/widgets/loading_view.dart';
-import '../../core/theme/app_theme.dart';
 import '../books/models/book.dart';
 import '../books/services/offline_book_library.dart';
 import '../books/services/sample_books.dart';
@@ -23,11 +22,13 @@ class SearchPage extends StatefulWidget {
     required this.onBookTap,
     this.initialQuery = '',
     this.bookshelfService,
+    this.showPreviewNavigation = false,
   });
   final OpenLibraryService service;
   final BookshelfService? bookshelfService;
   final ValueChanged<Book> onBookTap;
   final String initialQuery;
+  final bool showPreviewNavigation;
 
   @override
   State<SearchPage> createState() => _SearchPageState();
@@ -48,6 +49,9 @@ class _SearchPageState extends State<SearchPage> {
   bool _queued = false;
   bool _hasMore = false;
   bool _offlineOnly = false;
+  String _searchType = 'books';
+  String? _yearRange;
+  bool _borrowableOnly = false;
 
   @override
   void initState() {
@@ -142,8 +146,18 @@ class _SearchPageState extends State<SearchPage> {
       );
       if (!mounted || generation != _generation) return;
       final ids = _books.map((book) => book.id).toSet();
+      final filtered = result.books.where((book) {
+        if (_yearRange == null) return true;
+        final year = book.firstPublishYear;
+        if (year == null) return false;
+        final bounds = _yearRange!.split('-');
+        if (bounds.length != 2) return true;
+        final from = int.tryParse(bounds[0]);
+        final to = int.tryParse(bounds[1]);
+        return (from == null || year >= from) && (to == null || year <= to);
+      });
       setState(() {
-        _books = [..._books, ...result.books.where((book) => ids.add(book.id))];
+        _books = [..._books, ...filtered.where((book) => ids.add(book.id))];
         _page = page;
         _total = result.total;
         _hasMore = result.hasMore;
@@ -204,19 +218,64 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _bookCard(Book book) {
-    Widget card() => BookCard(
-      key: ValueKey(book.id),
-      book: book,
-      onTap: () => widget.onBookTap(book),
-      onSave: () => _saveBook(book),
-      saved: widget.bookshelfService?.bookById(book.id) != null,
-      saving: _saving.contains(book.id),
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    Widget card() => Material(
+      color: theme.colorScheme.surface,
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(13),
+        onTap: () => widget.onBookTap(book),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: BookCover(book: book, width: 56, height: 78),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(book.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 3),
+                Text('${book.authorLabel}${book.firstPublishYear == null ? '' : ' · ${book.firstPublishYear}'}',
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: muted)),
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  _statusChip('Chi tiết sách', const Color(0xFFE4F3EB), const Color(0xFF176C55)),
+                  if (widget.bookshelfService?.bookById(book.id) != null)
+                    _statusChip('Đã lưu', const Color(0xFFF1F1F5), muted),
+                ]),
+              ],
+            )),
+            if (widget.bookshelfService != null)
+              IconButton(
+                tooltip: 'Lưu vào kệ sách',
+                onPressed: _saving.contains(book.id) ? null : () => _saveBook(book),
+                icon: Icon(widget.bookshelfService!.bookById(book.id) != null
+                  ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                  color: const Color(0xFF176C55), size: 21),
+              ),
+          ]),
+        ),
+      ),
     );
     final shelf = widget.bookshelfService;
-    return shelf == null
-        ? card()
-        : ListenableBuilder(listenable: shelf, builder: (_, _) => card());
+    return shelf == null ? card() :
+      ListenableBuilder(listenable: shelf, builder: (_, _) => card());
   }
+
+  Widget _statusChip(String label, Color background, Color foreground) =>
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: background,
+        borderRadius: BorderRadius.circular(6)),
+      child: Text(label, style: TextStyle(fontSize: 10, color: foreground,
+        fontWeight: FontWeight.w600)),
+    );
 
   @override
   void dispose() {
@@ -226,197 +285,227 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   @override
-  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: Theme.of(context).brightness == Brightness.dark
-        ? SystemUiOverlayStyle.light
-        : SystemUiOverlayStyle.dark,
-    child: ColoredBox(
-      color: Theme.of(context).colorScheme.surface,
-      child: ListView(
-        padding: EdgeInsets.zero,
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        children: [
-          Container(
-            color: Theme.of(context).colorScheme.surface,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Semantics(
-                      header: true,
-                      child: Text(
-                        context.tr("Tìm kiếm"),
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
-                          color: Theme.of(context).colorScheme.onSurface,
-                          height: 1.16,
-                          letterSpacing: -.8,
-                        ),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    const green = Color(0xFF176C55);
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: theme.brightness == Brightness.dark
+        ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: ColoredBox(
+        color: theme.brightness == Brightness.dark
+          ? theme.colorScheme.surface : const Color(0xFFF7F7FA),
+        child: Column(children: [
+          Expanded(child: ListView(
+          padding: EdgeInsets.zero,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          children: [
+            SafeArea(bottom: false, child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  IconButton(
+                    tooltip: 'Quay lại',
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+                    },
+                    icon: const Icon(Icons.chevron_left_rounded, size: 24),
+                  ),
+                  Expanded(child: SizedBox(height: 42, child: TextField(
+                    controller: _query,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (_) => _restart(debounce: true),
+                    onSubmitted: (_) {
+                      FocusScope.of(context).unfocus();
+                      _restart();
+                    },
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Tên sách, tác giả, ISBN...',
+                      hintStyle: TextStyle(fontSize: 12, color: muted),
+                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                      suffixIcon: _query.text.isEmpty ? null : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () { _query.clear(); _restart(); },
                       ),
+                      filled: true,
+                      fillColor: theme.colorScheme.surface,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
+                        borderSide: BorderSide(color: theme.colorScheme.outlineVariant)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
+                        borderSide: BorderSide(color: theme.colorScheme.outlineVariant)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
+                        borderSide: const BorderSide(color: green)),
                     ),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: _query,
-                      textInputAction: TextInputAction.search,
-                      onChanged: (_) => _restart(debounce: true),
-                      onSubmitted: (_) {
-                        FocusScope.of(context).unfocus();
+                  ))),
+                ]),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(10)),
+                  child: Row(children: [
+                    for (final tab in const [
+                      ('books', 'Sách'), ('authors', 'Tác giả'), ('subjects', 'Chủ đề')
+                    ]) Expanded(child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        setState(() => _searchType = tab.$1);
+                        if (tab.$1 != 'books') {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Đang tìm kiếm sách theo từ khóa. Tìm riêng tác giả/chủ đề cần cập nhật API.')),
+                          );
+                        }
                         _restart();
                       },
-                      style: const TextStyle(fontSize: 18),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor:
-                            Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF343544)
-                            : AppTheme.softSurface,
-                        hintText: context.tr("Tên sách hoặc tác giả"),
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 15,
-                          horizontal: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        decoration: BoxDecoration(
+                          color: _searchType == tab.$1 ?
+                            theme.colorScheme.surface : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: _searchType == tab.$1 ?
+                            [const BoxShadow(color: Color(0x14000000), blurRadius: 5)] : null,
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: AppTheme.accent,
-                            width: 1,
-                          ),
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          size: 30,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                        suffixIcon: _query.text.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: context.tr("Xóa từ khóa"),
-                                onPressed: () {
-                                  _query.clear();
-                                  _restart();
-                                },
-                                icon: const Icon(Icons.close, size: 27),
-                              ),
+                        child: Text(tab.$2, textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12,
+                            fontWeight: _searchType == tab.$1 ?
+                              FontWeight.w700 : FontWeight.w400,
+                            color: _searchType == tab.$1 ? green : muted)),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    FilterChip(
-                      label: Text(context.tr("Sách đọc offline")),
-                      avatar: const Icon(Icons.menu_book_outlined, size: 20),
-                      selected: _offlineOnly,
-                      selectedColor: const Color(0xFFFFE8E1),
-                      onSelected: (selected) {
-                        setState(() => _offlineOnly = selected);
-                        _restart();
-                      },
-                    ),
-                    if (!_offlineOnly) ...[
-                      const SizedBox(height: 12),
-                      SearchFilters(
-                        language: _language,
-                        sort: _sort,
-                        onLanguageChanged: (value) {
-                          _language = value;
-                          _restart();
-                        },
-                        onSortChanged: (value) {
-                          _sort = value;
-                          _restart();
-                        },
-                      ),
-                    ],
-                  ],
+                    )),
+                  ]),
                 ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+                const SizedBox(height: 12),
+                SearchFilters(
+                  language: _language, sort: _sort,
+                  borrowableOnly: _borrowableOnly,
+                  yearRange: _yearRange,
+                  onLanguageChanged: (v) { _language = v; _restart(); },
+                  onSortChanged: (v) { _sort = v; _restart(); },
+                  onBorrowableChanged: (v) {
+                    setState(() => _borrowableOnly = v);
+                    if (v) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Đã bật dấu tích. Lọc sách có thể mượn cần hỗ trợ API.')),
+                      );
+                    }
+                  },
+                  onYearRangeChanged: (v) { _yearRange = v; _restart(); },
+                ),
+                const SizedBox(height: 8),
+                // Retain the existing offline feature without confusing it with borrowing.
+                Row(children: [
+                  SizedBox(height: 30, child: FilterChip(
+                    visualDensity: VisualDensity.compact,
+                    label: const Text('Đọc offline', style: TextStyle(fontSize: 11)),
+                    selected: _offlineOnly,
+                    onSelected: (v) { setState(() => _offlineOnly = v); _restart(); },
+                  )),
+                ]),
+              ]),
+            )),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 if (_query.text.trim().isEmpty && !_offlineOnly)
-                  _SearchMessage(
-                    icon: Icons.manage_search,
-                    text: context.tr(
-                      "Nhập tên sách hoặc tác giả để khám phá Open Library.",
-                    ),
-                  )
+                  const _SearchMessage(icon: Icons.manage_search_rounded,
+                    text: 'Nhập tên sách, tác giả hoặc chủ đề để tìm kiếm.')
                 else ...[
-                  if (_books.isNotEmpty) ...[
-                    Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      children: [
-                        Text(
-                          _offlineOnly
-                              ? context.tr("Sách đọc offline")
-                              : context.tr("Kết quả tìm kiếm"),
-                          style: const TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        Text(
-                          context.tr("{0} sách", [_total]),
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    for (final book in _books)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _bookCard(book),
-                      ),
-                  ],
-                  if (_loading)
-                    const LoadingView()
+                  Row(children: [
+                    Expanded(child: Text(
+                      _offlineOnly ? 'Sách đọc offline' :
+                        'Kết quả cho “${_query.text.trim()}”',
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: muted),
+                    )),
+                    if (!_loading) Text('$_total kết quả',
+                      style: TextStyle(fontSize: 11, color: muted)),
+                  ]),
+                  const SizedBox(height: 12),
+                  for (final book in _books)
+                    Padding(padding: const EdgeInsets.only(bottom: 9),
+                      child: _bookCard(book)),
+                  if (_loading) const LoadingView()
                   else if (_error != null)
-                    ErrorView(
-                      message: _error!,
-                      onRetry: _offlineOnly ? _loadOffline : _load,
-                    )
+                    ErrorView(message: _error!,
+                      onRetry: _offlineOnly ? _loadOffline : _load)
                   else if (_books.isEmpty)
-                    _SearchMessage(
-                      icon: Icons.search_off,
-                      text: context.tr(
-                        "Không tìm thấy sách. Thử từ khóa hoặc bộ lọc khác.",
-                      ),
-                    )
+                    const _SearchMessage(icon: Icons.search_off_rounded,
+                      text: 'Không tìm thấy sách. Hãy thử từ khóa hoặc bộ lọc khác.')
                   else if (_hasMore)
-                    OutlinedButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.expand_more),
-                      label: Text(context.tr("Tải thêm")),
-                    ),
+                    OutlinedButton.icon(onPressed: _load,
+                      icon: const Icon(Icons.expand_more_rounded),
+                      label: const Text('Tải thêm')),
                 ],
-              ],
+              ]),
             ),
-          ),
-        ],
+          ],
+        )),
+        if (widget.showPreviewNavigation)
+          _PreviewBottomNavigation(),
+        ]),
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _PreviewBottomNavigation extends StatelessWidget {
+  const _PreviewBottomNavigation();
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF176C55);
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    const items = [
+      (Icons.explore_outlined, 'Khám phá'),
+      (Icons.search_rounded, 'Tìm kiếm'),
+      (Icons.menu_book_outlined, 'Kệ sách'),
+      (Icons.person_outline_rounded, 'Tài khoản'),
+    ];
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++)
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      if (i != 1) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Đây là bản xem trước Search. Mục ${items[i].$2} sẽ được nối với điều hướng chính của ứng dụng.')),
+                        );
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(items[i].$1, size: 24, color: i == 1 ? green : muted),
+                          const SizedBox(height: 4),
+                          Text(items[i].$2, style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: i == 1 ? FontWeight.w700 : FontWeight.w500,
+                            color: i == 1 ? green : muted,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SearchMessage extends StatelessWidget {
@@ -426,12 +515,10 @@ class _SearchMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 40),
-    child: Column(
-      children: [
-        Icon(icon, size: 56, color: AppTheme.accent),
-        const SizedBox(height: 16),
-        Text(text, textAlign: TextAlign.center),
-      ],
-    ),
+    child: Column(children: [
+      Icon(icon, size: 44, color: const Color(0xFF176C55)),
+      const SizedBox(height: 12),
+      Text(text, textAlign: TextAlign.center),
+    ]),
   );
 }

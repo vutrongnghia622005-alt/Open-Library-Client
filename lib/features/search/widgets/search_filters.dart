@@ -1,7 +1,4 @@
-import 'package:open_library_client/core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
-
-import '../../../core/theme/app_theme.dart';
 import '../../books/services/open_library_service.dart';
 
 class SearchFilters extends StatelessWidget {
@@ -11,158 +8,112 @@ class SearchFilters extends StatelessWidget {
     required this.sort,
     required this.onLanguageChanged,
     required this.onSortChanged,
+    required this.borrowableOnly,
+    required this.onBorrowableChanged,
+    required this.yearRange,
+    required this.onYearRangeChanged,
   });
+
   final String? language;
   final BookSort sort;
+  final bool borrowableOnly;
+  final String? yearRange;
   final ValueChanged<String?> onLanguageChanged;
   final ValueChanged<BookSort> onSortChanged;
+  final ValueChanged<bool> onBorrowableChanged;
+  final ValueChanged<String?> onYearRangeChanged;
 
-  static const languages = {
-    'all': 'Mọi ngôn ngữ',
-    'vie': 'Tiếng Việt',
-    'eng': 'Tiếng Anh',
-    'fre': 'Tiếng Pháp',
-    'ger': 'Tiếng Đức',
-    'spa': 'Tiếng Tây Ban Nha',
+  static const languages = <String, String>{
+    'all': 'Mọi ngôn ngữ', 'vie': 'Tiếng Việt', 'eng': 'Tiếng Anh',
+    'fre': 'Tiếng Pháp', 'ger': 'Tiếng Đức', 'spa': 'Tiếng Tây Ban Nha',
   };
-  static const sorts = {
+  static const sorts = <BookSort, String>{
     BookSort.relevance: 'Liên quan nhất',
     BookSort.newest: 'Mới nhất',
     BookSort.oldest: 'Cũ nhất',
   };
+  static const years = <String, String>{
+    'all': 'Mọi năm', '2020-': 'Từ 2020', '2010-2019': '2010–2019',
+    '2000-2009': '2000–2009', '1900-1999': '1900–1999',
+    '-1899': 'Trước 1900',
+  };
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final largeText = MediaQuery.textScalerOf(context).scale(14) > 18;
-      final width = largeText
-          ? constraints.maxWidth
-          : (constraints.maxWidth - 10) / 2;
-      return PopupMenuTheme(
-        data: PopupMenuThemeData(
-          color: Theme.of(context).colorScheme.surface,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: const Color(0x24000000),
-          elevation: 8,
-          position: PopupMenuPosition.under,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          textStyle: TextStyle(
-            fontSize: 15,
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
+  Widget build(BuildContext context) {
+    Widget popup<T>({
+      required String title,
+      required T selected,
+      required Map<T, String> choices,
+      required ValueChanged<T> onSelected,
+    }) => PopupMenuButton<T>(
+      tooltip: title,
+      initialValue: selected,
+      onSelected: onSelected,
+      color: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      itemBuilder: (_) => choices.entries.map((entry) =>
+        CheckedPopupMenuItem<T>(
+          value: entry.key,
+          checked: entry.key == selected,
+          child: Text(entry.value),
         ),
-        child: Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          children: [
-            SizedBox(
-              width: width,
-              child: PopupMenuButton<String>(
-                tooltip: context.tr("Lọc ngôn ngữ"),
-                offset: const Offset(0, 8),
-                constraints: const BoxConstraints(minWidth: 240, maxWidth: 320),
-                initialValue: language ?? 'all',
-                onSelected: (value) =>
-                    onLanguageChanged(value == 'all' ? null : value),
-                itemBuilder: (_) => languages.entries
-                    .map(
-                      (entry) => CheckedPopupMenuItem(
-                        value: entry.key,
-                        checked: entry.key == (language ?? 'all'),
-                        child: Text(
-                          context.tr(entry.value),
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: entry.key == (language ?? 'all')
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: entry.key == (language ?? 'all')
-                                ? AppTheme.accent
-                                : Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                child: _FilterLabel(
-                  icon: Icons.language,
-                  text: language == null
-                      ? context.tr("Ngôn ngữ")
-                      : context.tr(languages[language]!),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: width,
-              child: PopupMenuButton<BookSort>(
-                tooltip: context.tr("Sắp xếp sách"),
-                offset: const Offset(0, 8),
-                constraints: const BoxConstraints(minWidth: 240, maxWidth: 320),
-                initialValue: sort,
-                onSelected: onSortChanged,
-                itemBuilder: (_) => sorts.entries
-                    .map(
-                      (entry) => CheckedPopupMenuItem(
-                        value: entry.key,
-                        checked: entry.key == sort,
-                        child: Text(
-                          context.tr(entry.value),
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: entry.key == sort
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: entry.key == sort
-                                ? AppTheme.accent
-                                : Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                child: _FilterLabel(
-                  icon: Icons.sort,
-                  text: sort == BookSort.relevance
-                      ? context.tr("Sắp xếp")
-                      : context.tr(sorts[sort]!),
-                ),
-              ),
-            ),
-          ],
+      ).toList(),
+      child: _Pill(label: title, icon: Icons.keyboard_arrow_down_rounded,
+        selected: false),
+    );
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        InkWell(
+          onTap: () => onBorrowableChanged(!borrowableOnly),
+          borderRadius: BorderRadius.circular(20),
+          child: _Pill(label: 'Có thể mượn',
+            icon: borrowableOnly ? Icons.check_circle_rounded : Icons.circle_outlined,
+            selected: borrowableOnly),
         ),
-      );
-    },
-  );
+        const SizedBox(width: 8),
+        popup<String>(
+          title: language == null ? 'Ngôn ngữ' : languages[language] ?? 'Ngôn ngữ',
+          selected: language ?? 'all', choices: languages,
+          onSelected: (v) => onLanguageChanged(v == 'all' ? null : v),
+        ),
+        const SizedBox(width: 8),
+        popup<String>(
+          title: yearRange == null ? 'Năm XB' : years[yearRange] ?? 'Năm XB',
+          selected: yearRange ?? 'all', choices: years,
+          onSelected: (v) => onYearRangeChanged(v == 'all' ? null : v),
+        ),
+        const SizedBox(width: 8),
+        popup<BookSort>(
+          title: sort == BookSort.relevance ? 'Sắp xếp' : sorts[sort]!,
+          selected: sort, choices: sorts, onSelected: onSortChanged,
+        ),
+      ]),
+    );
+  }
 }
 
-class _FilterLabel extends StatelessWidget {
-  const _FilterLabel({required this.icon, required this.text});
+class _Pill extends StatelessWidget {
+  const _Pill({required this.label, required this.icon, required this.selected});
+  final String label;
   final IconData icon;
-  final String text;
+  final bool selected;
+
   @override
   Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(minHeight: 48),
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
     decoration: BoxDecoration(
-      color: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF343544)
-          : AppTheme.softSurface,
-      borderRadius: BorderRadius.circular(16),
+      color: selected ? const Color(0xFFE2F3EB) : Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: selected ? const Color(0xFFB5DDCC) :
+        Theme.of(context).colorScheme.outlineVariant),
     ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 24),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 16))),
-        const SizedBox(width: 4),
-        const Icon(Icons.expand_more, size: 18),
-      ],
-    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 15, color: selected ? const Color(0xFF176C55) : null),
+      const SizedBox(width: 4),
+      Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+        color: selected ? const Color(0xFF176C55) : null)),
+    ]),
   );
 }
