@@ -3,10 +3,20 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../data/book_enrichment_data.dart';
 import '../models/book.dart';
 import '../models/reading_option.dart';
 
 enum BookSort { relevance, newest, oldest }
+
+class CommunityRating {
+  const CommunityRating({
+    required this.average,
+    required this.count,
+  });
+  final double average;
+  final int count;
+}
 
 class BookSearchResult {
   const BookSearchResult({
@@ -158,11 +168,38 @@ class OpenLibraryService {
       );
     } on FormatException {
       _cache.clear();
+      final fallback = BookEnrichmentData.getAuthorById(authorId);
+      if (fallback != null) return fallback;
       throw const BookSearchException('Dữ liệu tác giả không hợp lệ.');
     } on TypeError {
       _cache.clear();
+      final fallback = BookEnrichmentData.getAuthorById(authorId);
+      if (fallback != null) return fallback;
       throw const BookSearchException('Dữ liệu tác giả không hợp lệ.');
+    } catch (_) {
+      final fallback = BookEnrichmentData.getAuthorById(authorId);
+      if (fallback != null) return fallback;
+      rethrow;
     }
+  }
+
+  Future<CommunityRating?> getBookRatings(String workId) async {
+    try {
+      final key = libraryKey(workId, 'works', 'W');
+      final data = await _getJson(
+        Uri.https('openlibrary.org', '$key/ratings.json'),
+        cache: true,
+      );
+      final summary = data['summary'];
+      if (summary is Map) {
+        final average = (summary['average'] as num?)?.toDouble() ?? 0.0;
+        final count = (summary['count'] as num?)?.toInt() ?? 0;
+        return CommunityRating(average: average, count: count);
+      }
+    } catch (_) {
+      // Fallback gracefully
+    }
+    return null;
   }
 
   Future<EditionPageResult> getEditions(
@@ -248,7 +285,7 @@ class OpenLibraryService {
       final year = RegExp(r'\b[0-9]{4}\b')
           .firstMatch(sourceText(data['first_publish_date']) ?? '')
           ?.group(0);
-      final details = Book(
+      var details = Book(
         id: key,
         title: sourceText(data['title']) ?? book.title,
         authors: book.authors.isNotEmpty ? book.authors : names,
@@ -262,7 +299,12 @@ class OpenLibraryService {
             : book.descriptionSource,
         firstPublishYear:
             book.firstPublishYear ?? (year == null ? null : int.tryParse(year)),
+        subjectPlaces: sourceStrings(data['subject_places']),
+        subjectPeople: sourceStrings(data['subject_people']),
+        subjectTimes: sourceStrings(data['subject_times']),
+        originalTitle: sourceText(data['original_title']),
       );
+      details = BookEnrichmentData.enrich(details);
       return edition == null ? details : details.withEdition(edition);
     } on FormatException {
       _cache.clear();

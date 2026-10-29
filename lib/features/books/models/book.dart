@@ -31,6 +31,13 @@ class Book {
     this.coverEditionKey,
     this.coverIsIllustration = false,
     this.selectedEdition,
+    this.subjectPlaces = const [],
+    this.subjectPeople = const [],
+    this.subjectTimes = const [],
+    this.originalTitle,
+    this.quote,
+    this.ratingAverage,
+    this.ratingCount,
   });
 
   final String id;
@@ -46,6 +53,13 @@ class Book {
   final String? coverEditionKey;
   final bool coverIsIllustration;
   final BookEdition? selectedEdition;
+  final List<String> subjectPlaces;
+  final List<String> subjectPeople;
+  final List<String> subjectTimes;
+  final String? originalTitle;
+  final String? quote;
+  final double? ratingAverage;
+  final int? ratingCount;
 
   String get authorLabel =>
       authors.isEmpty ? 'Chưa rõ tác giả' : authors.join(', ');
@@ -77,6 +91,13 @@ class Book {
       descriptionSource: descriptionSource,
       firstPublishYear: firstPublishYear,
       selectedEdition: edition,
+      subjectPlaces: subjectPlaces,
+      subjectPeople: subjectPeople,
+      subjectTimes: subjectTimes,
+      originalTitle: originalTitle,
+      quote: quote,
+      ratingAverage: ratingAverage,
+      ratingCount: ratingCount,
     );
   }
 
@@ -127,6 +148,13 @@ class Book {
       selectedEdition: edition is Map
           ? BookEdition.fromApiJson(Map<String, dynamic>.from(edition))
           : null,
+      subjectPlaces: sourceStrings(json['subjectPlaces']),
+      subjectPeople: sourceStrings(json['subjectPeople']),
+      subjectTimes: sourceStrings(json['subjectTimes']),
+      originalTitle: sourceText(json['originalTitle']),
+      quote: sourceText(json['quote']),
+      ratingAverage: (json['ratingAverage'] as num?)?.toDouble(),
+      ratingCount: json['ratingCount'] as int?,
     );
   }
 
@@ -188,6 +216,13 @@ class Book {
               json['selectedEdition'] as Map<String, dynamic>,
             )
           : null,
+      subjectPlaces: sourceStrings(json['subjectPlaces']),
+      subjectPeople: sourceStrings(json['subjectPeople']),
+      subjectTimes: sourceStrings(json['subjectTimes']),
+      originalTitle: sourceText(json['originalTitle']),
+      quote: sourceText(json['quote']),
+      ratingAverage: (json['ratingAverage'] as num?)?.toDouble(),
+      ratingCount: json['ratingCount'] as int?,
     );
     if (book.selectedEdition != null &&
         !book.selectedEdition!.workIds.contains(book.id)) {
@@ -208,6 +243,8 @@ class BookEdition {
     this.pages,
     this.languages = const [],
     this.coverId,
+    this.format,
+    this.publishPlaces = const [],
   });
   final String id;
   final List<String> workIds;
@@ -218,6 +255,8 @@ class BookEdition {
   final int? pages;
   final List<String> languages;
   final int? coverId;
+  final String? format;
+  final List<String> publishPlaces;
 
   String get coverUrl => coverId != null && coverId! > 0
       ? 'https://covers.openlibrary.org/b/id/$coverId-M.jpg?default=false'
@@ -277,6 +316,10 @@ class BookEdition {
                 .toList()
           : const [],
       coverId: coverIds.isEmpty ? null : coverIds.first,
+      format: sourceText(json['physical_format']) ?? sourceText(json['physicalFormat']),
+      publishPlaces: sourceStrings(json['publish_places']).isNotEmpty
+          ? sourceStrings(json['publish_places'])
+          : sourceStrings(json['publishPlaces']),
     );
   }
 
@@ -293,6 +336,8 @@ class BookEdition {
     pages: json['pageCount'] is int ? json['pageCount'] as int : null,
     languages: sourceStrings(json['languages']),
     coverId: Book._coverId(json['coverUrl']),
+    format: sourceText(json['physicalFormat']),
+    publishPlaces: sourceStrings(json['publishPlaces']),
   );
 }
 
@@ -303,17 +348,37 @@ class BookAuthor {
     this.biography,
     this.birthDate,
     this.deathDate,
+    this.photoUrl,
+    this.photoId,
   });
   final String id;
   final String? name;
   final String? biography;
   final String? birthDate;
   final String? deathDate;
-  factory BookAuthor.fromJson(Map<String, dynamic> json) => BookAuthor(
-    id: libraryKey(json['key'], 'authors', 'A'),
-    name: sourceText(json['name']),
-    biography: sourceText(json['bio']),
-    birthDate: sourceText(json['birth_date']),
-    deathDate: sourceText(json['death_date']),
-  );
+  final String? photoUrl;
+  final int? photoId;
+
+  static int? _extractPhotoId(dynamic photos) {
+    if (photos is List && photos.isNotEmpty) {
+      final first = photos.first;
+      if (first is int && first > 0) return first;
+    }
+    return null;
+  }
+
+  factory BookAuthor.fromJson(Map<String, dynamic> json) {
+    final photoId = _extractPhotoId(json['photos']);
+    return BookAuthor(
+      id: libraryKey(json['key'], 'authors', 'A'),
+      name: sourceText(json['name']),
+      biography: sourceText(json['bio']),
+      birthDate: sourceText(json['birth_date']),
+      deathDate: sourceText(json['death_date']),
+      photoId: photoId,
+      photoUrl: photoId != null
+          ? 'https://covers.openlibrary.org/a/id/$photoId-M.jpg'
+          : null,
+    );
+  }
 }

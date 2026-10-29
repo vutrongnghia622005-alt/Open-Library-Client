@@ -1,11 +1,13 @@
 import 'package:open_library_client/core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/widgets/book_cover.dart';
 import '../../core/widgets/error_view.dart';
 import '../../core/widgets/loading_view.dart';
 import '../../core/theme/app_theme.dart';
+import 'data/book_enrichment_data.dart';
 import 'editions_page.dart';
 import 'book_reading_page.dart';
 import 'models/book.dart';
@@ -55,12 +57,20 @@ class _BookDetailPageState extends State<BookDetailPage> {
   bool _saving = false;
   bool _saved = false;
   Future<List<BookAuthor>>? _authors;
+  CommunityRating? _rating;
 
   @override
   void initState() {
     super.initState();
     if (OfflineBookLibrary.hasBook(widget.book)) {
-      _book = widget.book;
+      _book = BookEnrichmentData.enrich(widget.book);
+      if (_book!.ratingAverage != null) {
+        _rating = CommunityRating(
+          average: _book!.ratingAverage!,
+          count: _book!.ratingCount ?? 0,
+        );
+      }
+      _loadRatings(_book!.id);
     } else {
       _load();
     }
@@ -72,14 +82,37 @@ class _BookDetailPageState extends State<BookDetailPage> {
     super.dispose();
   }
 
+  Future<void> _loadRatings(String workId) async {
+    try {
+      final rating = await _service.getBookRatings(workId);
+      if (mounted && rating != null) {
+        setState(() => _rating = rating);
+      }
+    } catch (_) {
+      // Keep existing rating or null
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final book = await _service.getBookDetails(widget.book);
-      if (mounted) setState(() => _book = book);
+      var book = await _service.getBookDetails(widget.book);
+      book = BookEnrichmentData.enrich(book);
+      if (mounted) {
+        setState(() {
+          _book = book;
+          if (book.ratingAverage != null) {
+            _rating = CommunityRating(
+              average: book.ratingAverage!,
+              count: book.ratingCount ?? 0,
+            );
+          }
+        });
+        _loadRatings(book.id);
+      }
     } catch (error) {
       if (mounted) {
         setState(
@@ -126,6 +159,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
     }
   }
 
+  Future<void> _shareBook() async {
+    if (_book == null) return;
+    final url = _book!.selectedEdition?.sourceUrl ?? _book!.sourceUrl;
+    final text = '${_book!.title} - ${_book!.authorLabel}\n$url';
+    await Clipboard.setData(ClipboardData(text: text));
+    _message("Đã sao chép liên kết sách vào bộ nhớ tạm.");
+  }
+
   Future<void> _read(Book book) async {
     if (OfflineBookLibrary.hasBook(book) && widget.onStartReading != null) {
       try {
@@ -163,8 +204,41 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 
   void _loadAuthors() => setState(
-    () => _authors = Future.wait(_book!.authorIds.map(_service.getAuthor)),
+    () => _authors = _fetchAuthors(),
   );
+
+  Future<List<BookAuthor>> _fetchAuthors() async {
+    if (_book == null) return const [];
+    final ids = _book!.authorIds;
+    if (ids.isNotEmpty) {
+      final list = <BookAuthor>[];
+      for (final id in ids) {
+        try {
+          final author = await _service.getAuthor(id);
+          list.add(author);
+        } catch (_) {
+          final fallback = BookEnrichmentData.getAuthorById(id);
+          if (fallback != null) {
+            list.add(fallback);
+          } else {
+            rethrow;
+          }
+        }
+      }
+      return list;
+    }
+    // Fallback if authorIds is empty: check curated author data by name
+    final list = <BookAuthor>[];
+    for (final name in _book!.authors) {
+      final fallback = BookEnrichmentData.getAuthorByName(name);
+      if (fallback != null) {
+        list.add(fallback);
+      } else {
+        list.add(BookAuthor(id: '', name: name));
+      }
+    }
+    return list;
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -172,12 +246,17 @@ class _BookDetailPageState extends State<BookDetailPage> {
     appBar: AppBar(
       title: Text(
         context.tr("Chi tiết sách"),
-        style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+        style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
       ),
       centerTitle: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       surfaceTintColor: Colors.transparent,
       actions: [
+        IconButton(
+          tooltip: context.tr("Chia sẻ sách"),
+          onPressed: _book == null ? null : _shareBook,
+          icon: const Icon(Icons.share_outlined),
+        ),
         IconButton(
           tooltip: _saved
               ? context.tr("Đã có trong tủ sách")
@@ -232,6 +311,21 @@ class _BookDetailPageState extends State<BookDetailPage> {
             letterSpacing: -0.5,
           ),
         ),
+        if (book.originalTitle != null &&
+            book.originalTitle!.trim().isNotEmpty &&
+            book.originalTitle!.trim() != book.title.trim())
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              context.tr("Tên gốc: {0}", [book.originalTitle!]),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         const SizedBox(height: 8),
         Text(
           book.authors.isEmpty
@@ -263,6 +357,23 @@ class _BookDetailPageState extends State<BookDetailPage> {
                 ),
               ),
             ),
+            if (_rating != null && _rating!.count > 0) ...[
+              const SizedBox(width: 14),
+              const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 20),
+              const SizedBox(width: 4),
+              Text(
+                _rating!.average.toStringAsFixed(1),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '(${_rating!.count > 1000 ? '${(_rating!.count / 1000).toStringAsFixed(1)}k' : _rating!.count})',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
@@ -274,7 +385,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
             spacing: 8,
             runSpacing: 6,
             children: [
-              for (final category in book.categories.take(3))
+              for (final category in book.categories.take(4))
                 Chip(
                   label: Text(
                     context.tr(category),
@@ -288,6 +399,184 @@ class _BookDetailPageState extends State<BookDetailPage> {
                 ),
             ],
           ),
+        if (book.quote != null && book.quote!.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF2C2D3A)
+                  : const Color(0xFFFFF7F2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFFFF713D).withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.format_quote_rounded,
+                  color: Color(0xFFFF713D),
+                  size: 26,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '"${book.quote!}"',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontStyle: FontStyle.italic,
+                          height: 1.45,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (book.authors.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '— ${book.authors.first}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (book.subjectPeople.isNotEmpty ||
+            book.subjectPlaces.isNotEmpty ||
+            book.subjectTimes.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF343544)
+                  : AppTheme.softSurface,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  context.tr("Đặc điểm tác phẩm"),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (book.subjectPeople.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.people_outline,
+                        size: 18,
+                        color: Color(0xFFFF713D),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${context.tr("Nhân vật")}: ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              TextSpan(
+                                text: book.subjectPeople.join(', '),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (book.subjectPlaces.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 18,
+                        color: Color(0xFFFF713D),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${context.tr("Bối cảnh")}: ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              TextSpan(
+                                text: book.subjectPlaces.join(', '),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (book.subjectTimes.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.history_outlined,
+                        size: 18,
+                        color: Color(0xFFFF713D),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${context.tr("Thời kỳ")}: ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              TextSpan(
+                                text: book.subjectTimes.join(', '),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
         Container(
           decoration: BoxDecoration(
@@ -358,7 +647,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
         const SizedBox(height: 16),
         Text(
           context.tr("Giới thiệu"),
-          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
         SelectableText(
@@ -453,7 +742,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
         const SizedBox(height: 20),
         Text(
           context.tr("Thông tin xuất bản"),
-          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         Text(
@@ -462,7 +751,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
           ]),
         ),
         EditionMetadata(edition: book.selectedEdition),
-        if (book.authorIds.isNotEmpty)
+        if (book.authorIds.isNotEmpty || book.authors.isNotEmpty)
           ExpansionTile(
             tilePadding: EdgeInsets.zero,
             title: Text(context.tr("Thông tin tác giả")),
@@ -483,38 +772,90 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         onRetry: _loadAuthors,
                       );
                     }
+                    final authors = snapshot.data ?? const [];
+                    if (authors.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(context.tr("Chưa có dữ liệu")),
+                      );
+                    }
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (final author in snapshot.data!)
+                        for (final author in authors)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  author.name ?? context.tr("Chưa có dữ liệu"),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: const Color(0xFFFFEEE7),
+                                      backgroundImage: author.photoUrl != null
+                                          ? NetworkImage(author.photoUrl!)
+                                          : null,
+                                      child: author.photoUrl == null
+                                          ? const Icon(
+                                              Icons.person,
+                                              color: Color(0xFFFF554C),
+                                            )
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            author.name ??
+                                                context.tr("Chưa có dữ liệu"),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          if (author.birthDate != null)
+                                            Text(
+                                              context.tr("Ngày sinh: {0}", [
+                                                author.birthDate,
+                                              ]),
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                            ),
+                                          if (author.deathDate != null)
+                                            Text(
+                                              context.tr("Ngày mất: {0}", [
+                                                author.deathDate,
+                                              ]),
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                if (author.birthDate != null)
-                                  Text(
-                                    context.tr("Ngày sinh: {0}", [
-                                      author.birthDate,
-                                    ]),
-                                  ),
-                                if (author.deathDate != null)
-                                  Text(
-                                    context.tr("Ngày mất: {0}", [
-                                      author.deathDate,
-                                    ]),
-                                  ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 8),
                                 Text(
                                   author.biography ??
                                       context.tr("Chưa có dữ liệu"),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    height: 1.5,
+                                  ),
                                 ),
+                                const Divider(height: 20),
                               ],
                             ),
                           ),

@@ -86,6 +86,14 @@ class AuthService extends ChangeNotifier {
         notifyListeners();
         return user;
       } on ApiException catch (error) {
+        if (error.code == 'NETWORK_ERROR' || error.code == 'TIMEOUT') {
+          final account = _accounts[normalizedEmail];
+          if (account != null && account.password == password) {
+            _currentUser = account.user;
+            notifyListeners();
+            return account.user;
+          }
+        }
         throw AuthException(error.message);
       }
     }
@@ -125,6 +133,20 @@ class AuthService extends ChangeNotifier {
         );
         return;
       } on ApiException catch (error) {
+        if (error.code == 'NETWORK_ERROR' || error.code == 'TIMEOUT') {
+          if (_accounts.containsKey(normalizedEmail)) {
+            throw const AuthException('Email này đã được đăng ký');
+          }
+          _accounts[normalizedEmail] = (
+            user: UserProfile(
+              id: 'demo-email:$normalizedEmail',
+              displayName: displayName.trim(),
+              email: normalizedEmail,
+            ),
+            password: password,
+          );
+          return;
+        }
         throw AuthException(error.message);
       }
     }
