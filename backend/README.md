@@ -4,6 +4,8 @@ FastAPI + PostgreSQL API for accounts, the 30-book catalog, Open Library metadat
 
 ## Deploy on Render
 
+[Deploy this branch on Render](https://render.com/deploy?repo=https://github.com/vutrongnghia622005-alt/Open-Library-Client/tree/deploy-backend)
+
 The repository's `render.yaml` deploys this branch as a free Python web service and a free PostgreSQL database in Singapore. Connect the `deploy-backend` branch as a Render Blueprint. Set `OPEN_LIBRARY_USER_AGENT` to an app name and a real contact email when prompted. Render generates `JWT_SECRET` and injects the database connection string.
 
 The start command runs Alembic migrations and imports the 30-book catalog before starting Uvicorn. Check `/ready` and `/api/v1/books/featured` on the service URL after deploy. Configure SMTP and `RESET_LINK_BASE_URL` separately if password-reset email is needed; local mail files do not persist on a free web service. Render's free PostgreSQL database expires after 30 days, so export data or upgrade before expiry.
