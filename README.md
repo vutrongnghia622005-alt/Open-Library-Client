@@ -45,4 +45,5 @@ App dùng backend cho tài khoản, khôi phục phiên đăng nhập, hồ sơ,
 
 Nội dung đọc có sẵn, vị trí đọc, ảnh đại diện, bình luận, đánh giá và xếp hạng vẫn ở thiết bị. Backend hiện chưa có API cho các phần này; chúng chưa đồng bộ giữa thiết bị. Tìm kiếm sách ngoại tuyến vẫn dùng dữ liệu kèm app.
 
+
 Kiểm tra bằng `flutter analyze`, `flutter test` và `cd backend && .venv/bin/python -m pytest -q`.
